@@ -3,15 +3,22 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include "include/raylib.h"
 
 #define NUM_OF_ROWS 3
+#define WINNER_SCORE 10
+#define TIE_SCORE 0
+#define LOSER_SCORE -10
+#define STARTING_PLAYER PLAYER_USER
+
 #define DEFAULT_TILE_COLOR CLITERAL(Color){0, 102, 102, 255}
 #define BACKGROUND_COLOR BLACK
 #define HOVER_COLOR CLITERAL(Color){25, 51, 0, 255}
 #define CIRCLE_COLOR RED
 #define CROSS_COLOR BLUE
 #define OUTCOME_COLOR WHITE
+
 #define SCREEN_WIDTH 770
 #define SCREEN_HEIGHT 770
 #define TILE_MARGIN_X 20
@@ -41,31 +48,34 @@ typedef enum {
     PLAYER_AI
 } player_state;
 
-void draw_tiles(int tiles[NUM_OF_ROWS][NUM_OF_ROWS], Vector2 *hovered_tile_position);
+typedef struct {
+    int score;
+    Vector2 tile_index;
+} Movement;
+
+void draw_tiles(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS], Vector2 *hovered_tile_position);
 Vector2 get_tile_from_pos(Vector2 *mouse_position);
-void update_tiles_on_mouse_position(int tiles[NUM_OF_ROWS][NUM_OF_ROWS], Vector2 *hovered_tile_position, player_state *current_player);
-match_state check_win_condition(int tiles[NUM_OF_ROWS][NUM_OF_ROWS]);
-match_state check_tie_condition(int tiles[NUM_OF_ROWS][NUM_OF_ROWS]);
-void reset_game(int tiles[NUM_OF_ROWS][NUM_OF_ROWS], match_state *current_match_state, player_state *current_player);
+void update_tiles_on_mouse_position(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS], Vector2 *hovered_tile_position, player_state *current_player);
+match_state check_win_condition(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS]);
+match_state check_tie_condition(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS]);
+match_state check_diagonal_line(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS], char *direction);
+match_state check_straight_lines(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS], char *direction);
+void reset_game(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS], match_state *current_match_state, player_state *current_player);
 void render_outcome_ui(match_state *current_match_state);
+Movement find_best_move_ai(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS]);
+int minimax(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS], int depth, bool isMax);
 
 int main (void) {
-    int tiles[NUM_OF_ROWS][NUM_OF_ROWS] = {EMPTY};
-    player_state current_player = PLAYER_USER;
-    bool exit = false;
+    tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS] = {EMPTY};
+    player_state current_player = STARTING_PLAYER;
     Vector2 hovered_tile_position = {-1, -1};
     match_state current_match_state;
 
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Simple Tic Tac Toe Game");
-
     SetTargetFPS(60);
     // TODO: Update makefile with pkg config of raylib, remove lib static file
     // TODO: (Optional) Trigger a sound when user makes a move
-    // TODO: Add AI movement
-    while (WindowShouldClose() || !exit) {
-        if (IsKeyPressed(KEY_Y)) {
-            exit = true;
-        }
+    while (!WindowShouldClose()) {
 
         BeginDrawing();
 
@@ -114,7 +124,7 @@ void render_outcome_ui(match_state *current_match_state) {
 
 }
 
-void reset_game(int tiles[NUM_OF_ROWS][NUM_OF_ROWS], match_state *current_match_state, player_state *current_player) {
+void reset_game(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS], match_state *current_match_state, player_state *current_player) {
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         Vector2 mouse_position = GetMousePosition();
 
@@ -122,12 +132,12 @@ void reset_game(int tiles[NUM_OF_ROWS][NUM_OF_ROWS], match_state *current_match_
                 mouse_position.y > RESTART_BUTTON_START_Y && mouse_position.y < RESTART_BUTTON_START_Y + RESTART_BUTTON_HEIGHT) {
             memset(tiles, EMPTY, sizeof(tiles[0][0]) * NUM_OF_ROWS * NUM_OF_ROWS);
             *current_match_state = CONTINUE;
-            *current_player = PLAYER_USER;
+            *current_player = STARTING_PLAYER;
         }
     }
 }
 
-match_state check_diagonal_line(int tiles[NUM_OF_ROWS][NUM_OF_ROWS], char* direction) {
+match_state check_diagonal_line(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS], char *direction) {
     unsigned int count_tile_user = 0;
     unsigned int count_tile_ai = 0;
 
@@ -158,7 +168,7 @@ match_state check_diagonal_line(int tiles[NUM_OF_ROWS][NUM_OF_ROWS], char* direc
     return CONTINUE;
 }
 
-match_state check_straight_lines(int tiles[NUM_OF_ROWS][NUM_OF_ROWS], char* direction) { 
+match_state check_straight_lines(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS], char *direction) { 
     unsigned int count_tile_user;
     unsigned int count_tile_ai;
 
@@ -194,7 +204,7 @@ match_state check_straight_lines(int tiles[NUM_OF_ROWS][NUM_OF_ROWS], char* dire
     return CONTINUE;
 }
 
-match_state check_win_condition(int tiles[NUM_OF_ROWS][NUM_OF_ROWS]) {
+match_state check_win_condition(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS]) {
     match_state current_state = check_diagonal_line(tiles, "LEFT");
     
     if (current_state != CONTINUE) {
@@ -222,7 +232,7 @@ match_state check_win_condition(int tiles[NUM_OF_ROWS][NUM_OF_ROWS]) {
     return check_tie_condition(tiles);
 }
 
-match_state check_tie_condition(int tiles[NUM_OF_ROWS][NUM_OF_ROWS]) {
+match_state check_tie_condition(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS]) {
     unsigned int count_pressed_tiles = 0;
 
     for (size_t i = 0; i < NUM_OF_ROWS; i++) {
@@ -238,26 +248,112 @@ match_state check_tie_condition(int tiles[NUM_OF_ROWS][NUM_OF_ROWS]) {
     return count_pressed_tiles == NUM_OF_ROWS * NUM_OF_ROWS ? TIE : CONTINUE;
 }
 
-void update_tiles_on_mouse_position(int tiles[NUM_OF_ROWS][NUM_OF_ROWS], Vector2 *hovered_tile_position, player_state *current_player) {
-    Vector2 mouse_position = GetMousePosition();
-    Vector2 tile_position = get_tile_from_pos(&mouse_position);
+int minimax(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS], int depth, bool isMax) {
+    match_state current_match_state = check_win_condition(tiles);
 
-    if (tile_position.x > -1 && tile_position.y > -1) {
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-            tile_state pressed_tile_state = tiles[(int)tile_position.x][(int)tile_position.y];
-            
-            if (pressed_tile_state == EMPTY) {
-                tiles[(int)tile_position.x][(int)tile_position.y] = *current_player == PLAYER_USER ? USER : AI;
-                *current_player = *current_player == PLAYER_USER ? PLAYER_AI : PLAYER_USER;
+    switch (current_match_state) {
+            case WINNER_USER:
+                return LOSER_SCORE + depth;
+            case WINNER_AI:
+                return WINNER_SCORE - depth;
+            case TIE:
+                return TIE_SCORE;
+            default:
+                break;
+    }
+
+    if (isMax) {
+        int best_score = INT_MIN;
+
+        for (size_t i = 0; i < NUM_OF_ROWS; i++) {
+            for (size_t j = 0; j < NUM_OF_ROWS; j++) {
+                if (tiles[i][j] == EMPTY) {
+                    tiles[i][j] = AI;
+                    int score = minimax(tiles, depth + 1, false);
+                    tiles[i][j] = EMPTY;
+
+                    if (score > best_score) {
+                        best_score = score;
+                    }
+                }
             }
-        } else {
-            hovered_tile_position->x = tile_position.x;
-            hovered_tile_position->y = tile_position.y;
+        }
+        
+        return best_score;
+    } else {
+        int best_score = INT_MAX;
+
+        for (size_t i = 0; i < NUM_OF_ROWS; i++) {
+            for (size_t j = 0; j < NUM_OF_ROWS; j++) {
+                if (tiles[i][j] == EMPTY) {
+                    tiles[i][j] = USER;
+                    int score = minimax(tiles, depth + 1, true);
+                    tiles[i][j] = EMPTY;
+
+                    if (score < best_score) {
+                        best_score = score;
+                    }
+                }
+            }
+        }
+
+        return best_score;
+    }
+}
+
+
+Movement find_best_move_ai(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS]) {
+    Movement best_move;
+    best_move.score = INT_MIN;
+    best_move.tile_index.x = -1;
+    best_move.tile_index.y = -1;
+
+    for (size_t i = 0; i < NUM_OF_ROWS; i++) {
+        for (size_t j = 0; j < NUM_OF_ROWS; j++) {
+            if (tiles[i][j] == EMPTY) {
+                tiles[i][j] = AI;
+                int score = minimax(tiles, 0, false);
+                tiles[i][j] = EMPTY;
+
+                if (score > best_move.score) {
+                    best_move.score = score;
+                    best_move.tile_index.x = i;
+                    best_move.tile_index.y = j;
+                }
+            }
+        }
+    }
+
+    return best_move;
+}
+
+
+void update_tiles_on_mouse_position(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS], Vector2 *hovered_tile_position, player_state *current_player) {
+    if (*current_player == PLAYER_AI) {
+        Movement best_move_ai = find_best_move_ai(tiles);
+        tiles[(int)best_move_ai.tile_index.x][(int)best_move_ai.tile_index.y] = AI;
+        *current_player = PLAYER_USER;
+    } else {
+        Vector2 mouse_position = GetMousePosition();
+        Vector2 tile_position = get_tile_from_pos(&mouse_position);
+
+        if (tile_position.x > -1 && tile_position.y > -1) {
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                tile_state pressed_tile_state = tiles[(int)tile_position.x][(int)tile_position.y];
+
+                if (pressed_tile_state == EMPTY) {
+                    tiles[(int)tile_position.x][(int)tile_position.y] = USER;
+                    *current_player = PLAYER_AI;
+                }
+            } else {
+                hovered_tile_position->x = tile_position.x;
+                hovered_tile_position->y = tile_position.y;
+            }
         }
     }
 }
 
-void draw_tiles(int tiles[NUM_OF_ROWS][NUM_OF_ROWS], Vector2 *hovered_tile_position) {
+void draw_tiles(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS], Vector2 *hovered_tile_position) {
     for (size_t i = 0; i < NUM_OF_ROWS; i++) {
         for (size_t j = 0; j < NUM_OF_ROWS; j++) {
             int starting_point_x = i * (TILE_MARGIN_X + TILE_WIDTH);
