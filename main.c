@@ -64,6 +64,7 @@ void reset_game(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS], match_state *current
 void render_outcome_ui(match_state *current_match_state);
 Movement find_best_move_ai(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS]);
 int minimax(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS], int depth, bool isMax);
+void play_sound(const char *file_path);
 
 int main (void) {
     tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS] = {EMPTY};
@@ -72,11 +73,11 @@ int main (void) {
     match_state current_match_state;
 
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Simple Tic Tac Toe Game");
+    InitAudioDevice();
     SetTargetFPS(60);
-    // TODO: Update makefile with pkg config of raylib, remove lib static file
-    // TODO: (Optional) Trigger a sound when user makes a move
-    while (!WindowShouldClose()) {
 
+    // TODO: Update makefile with pkg config of raylib, remove lib static file
+    while (!WindowShouldClose()) {
         BeginDrawing();
 
         current_match_state = check_win_condition(tiles);
@@ -94,9 +95,16 @@ int main (void) {
 
     }
 
+    CloseAudioDevice();
     CloseWindow();
 
     return 0;
+}
+
+void play_sound(const char *file_path) {
+    Sound sound = LoadSound(file_path);
+    SetSoundVolume(sound, 0.3f);
+    PlaySound(sound);
 }
 
 void render_outcome_ui(match_state *current_match_state) {
@@ -133,6 +141,7 @@ void reset_game(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS], match_state *current
             memset(tiles, EMPTY, sizeof(tiles[0][0]) * NUM_OF_ROWS * NUM_OF_ROWS);
             *current_match_state = CONTINUE;
             *current_player = STARTING_PLAYER;
+            play_sound("resources/restart-click.wav");
         }
     }
 }
@@ -344,6 +353,7 @@ void update_tiles_on_mouse_position(tile_state tiles[NUM_OF_ROWS][NUM_OF_ROWS], 
                 if (pressed_tile_state == EMPTY) {
                     tiles[(int)tile_position.x][(int)tile_position.y] = USER;
                     *current_player = PLAYER_AI;
+                    play_sound("resources/tile-click.wav");
                 }
             } else {
                 hovered_tile_position->x = tile_position.x;
